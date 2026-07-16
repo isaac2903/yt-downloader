@@ -17,6 +17,10 @@ def test_accepts_mobile_url():
     assert is_youtube_url("https://m.youtube.com/watch?v=dQw4w9WgXcQ")
 
 
+def test_accepts_uppercase_host():
+    assert is_youtube_url("https://WWW.YouTube.com/watch?v=dQw4w9WgXcQ")
+
+
 def test_rejects_non_youtube_url():
     assert not is_youtube_url("https://vimeo.com/12345")
 

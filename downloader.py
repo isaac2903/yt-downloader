@@ -8,7 +8,8 @@ import yt_dlp
 YOUTUBE_URL_RE = re.compile(
     r"^https?://"
     r"(?:(?:www\.|m\.)?youtube\.com/(?:watch\?\S*v=|shorts/)|youtu\.be/)"
-    r"[\w-]{6,}"
+    r"[\w-]{6,}",
+    re.IGNORECASE,
 )
 
 
@@ -99,12 +100,15 @@ def download(url: str) -> None:
             return
         pick = _prompt_choice("Choose resolution: ", [f"{h}p" for h in heights])
         opts = build_video_opts(heights[pick])
+        suffix = ".mp4"
     else:
         opts = build_audio_opts()
+        suffix = ".mp3"
 
     with yt_dlp.YoutubeDL(opts) as ydl:
         ydl.download([url])
-    print(f"  Saved to {DOWNLOAD_DIR}")
+        path = Path(ydl.prepare_filename(info)).with_suffix(suffix)
+    print(f"  Saved to {path}")
 
 
 def main() -> None:
