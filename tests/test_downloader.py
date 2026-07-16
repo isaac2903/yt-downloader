@@ -55,3 +55,34 @@ def test_ignores_audio_only_formats():
 def test_empty_formats_returns_empty_list():
     assert available_heights({"formats": []}) == []
     assert available_heights({}) == []
+
+
+from pathlib import Path
+
+from downloader import DOWNLOAD_DIR, build_audio_opts, build_video_opts
+
+
+def test_download_dir_is_downloads_folder():
+    assert DOWNLOAD_DIR == Path.home() / "Downloads"
+
+
+def test_video_opts_cap_resolution_and_merge_mp4():
+    opts = build_video_opts(720)
+    assert opts["format"] == "bestvideo[height<=720]+bestaudio/best[height<=720]"
+    assert opts["merge_output_format"] == "mp4"
+    assert opts["noplaylist"] is True
+    assert opts["outtmpl"] == str(DOWNLOAD_DIR / "%(title)s.%(ext)s")
+
+
+def test_audio_opts_extract_mp3():
+    opts = build_audio_opts()
+    assert opts["format"] == "bestaudio/best"
+    assert opts["noplaylist"] is True
+    assert opts["postprocessors"] == [
+        {
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        }
+    ]
+    assert opts["outtmpl"] == str(DOWNLOAD_DIR / "%(title)s.%(ext)s")
