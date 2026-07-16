@@ -12,3 +12,13 @@ YOUTUBE_URL_RE = re.compile(
 def is_youtube_url(url: str) -> bool:
     """Return True if url looks like a YouTube single-video URL."""
     return bool(YOUTUBE_URL_RE.match(url))
+
+
+def available_heights(info: dict) -> list[int]:
+    """Return unique video heights in info's formats, highest first."""
+    heights = {
+        f["height"]
+        for f in info.get("formats", [])
+        if f.get("height") and f.get("vcodec") not in (None, "none")
+    }
+    return sorted(heights, reverse=True)

@@ -1,4 +1,4 @@
-from downloader import is_youtube_url
+from downloader import is_youtube_url, available_heights
 
 
 def test_accepts_standard_watch_url():
@@ -27,3 +27,31 @@ def test_rejects_garbage():
 
 def test_rejects_empty_string():
     assert not is_youtube_url("")
+
+
+def test_extracts_unique_heights_sorted_descending():
+    info = {
+        "formats": [
+            {"height": 360, "vcodec": "avc1"},
+            {"height": 1080, "vcodec": "vp9"},
+            {"height": 720, "vcodec": "avc1"},
+            {"height": 1080, "vcodec": "avc1"},
+        ]
+    }
+    assert available_heights(info) == [1080, 720, 360]
+
+
+def test_ignores_audio_only_formats():
+    info = {
+        "formats": [
+            {"height": None, "vcodec": "none", "acodec": "opus"},
+            {"vcodec": "none", "acodec": "mp4a"},
+            {"height": 480, "vcodec": "avc1"},
+        ]
+    }
+    assert available_heights(info) == [480]
+
+
+def test_empty_formats_returns_empty_list():
+    assert available_heights({"formats": []}) == []
+    assert available_heights({}) == []
