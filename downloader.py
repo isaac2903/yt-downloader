@@ -125,10 +125,13 @@ def main() -> None:
             continue
         try:
             download(url)
-        except yt_dlp.utils.DownloadError as e:
+        except yt_dlp.utils.YoutubeDLError as e:
             print(f"  Download failed: {e}")
         except KeyboardInterrupt:
             print("\n  Cancelled — back to the prompt.")
+        except EOFError:
+            print()
+            return
 
 
 if __name__ == "__main__":
