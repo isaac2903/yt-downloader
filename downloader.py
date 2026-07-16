@@ -3,6 +3,8 @@
 import re
 from pathlib import Path
 
+import yt_dlp
+
 YOUTUBE_URL_RE = re.compile(
     r"^https?://"
     r"(?:(?:www\.|m\.)?youtube\.com/(?:watch\?\S*v=|shorts/)|youtu\.be/)"
@@ -69,3 +71,65 @@ def build_audio_opts() -> dict:
             }
         ],
     }
+
+
+def _prompt_choice(prompt: str, choices: list[str]) -> int:
+    """Show numbered choices; return the selected index."""
+    for i, choice in enumerate(choices, 1):
+        print(f"  {i}. {choice}")
+    while True:
+        raw = input(prompt).strip()
+        if raw.isdigit() and 1 <= int(raw) <= len(choices):
+            return int(raw) - 1
+        print(f"  Please enter a number between 1 and {len(choices)}.")
+
+
+def download(url: str) -> None:
+    """Fetch info for url, ask video/audio + resolution, download."""
+    print("  Fetching video info...")
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
+        info = ydl.extract_info(url, download=False)
+    print(f"  Title: {info.get('title', 'unknown')}")
+
+    mode = _prompt_choice("Choose format: ", ["Video (MP4)", "Audio only (MP3)"])
+    if mode == 0:
+        heights = available_heights(info)
+        if not heights:
+            print("  No video formats found for this URL.")
+            return
+        pick = _prompt_choice("Choose resolution: ", [f"{h}p" for h in heights])
+        opts = build_video_opts(heights[pick])
+    else:
+        opts = build_audio_opts()
+
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        ydl.download([url])
+    print(f"  Saved to {DOWNLOAD_DIR}")
+
+
+def main() -> None:
+    print("yt-downloader — paste a YouTube link, get the video.")
+    print(f"Files are saved to {DOWNLOAD_DIR}")
+    while True:
+        try:
+            url = input("\nYouTube URL (q to quit): ").strip()
+        except (KeyboardInterrupt, EOFError):
+            print()
+            return
+        if url.lower() in ("q", "quit", "exit"):
+            return
+        if not url:
+            continue
+        if not is_youtube_url(url):
+            print("  That doesn't look like a YouTube video URL. Try again.")
+            continue
+        try:
+            download(url)
+        except yt_dlp.utils.DownloadError as e:
+            print(f"  Download failed: {e}")
+        except KeyboardInterrupt:
+            print("\n  Cancelled — back to the prompt.")
+
+
+if __name__ == "__main__":
+    main()
