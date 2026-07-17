@@ -72,7 +72,10 @@ def test_download_dir_is_downloads_folder():
 
 def test_video_opts_cap_resolution_and_merge_mp4():
     opts = build_video_opts(720)
-    assert opts["format"] == "bestvideo[height<=720]+bestaudio/best[height<=720]"
+    assert opts["format"] == (
+        "bestvideo[vcodec^=avc1][height<=720]+bestaudio[ext=m4a]/"
+        "bestvideo[height<=720]+bestaudio/best[height<=720]"
+    )
     assert opts["merge_output_format"] == "mp4"
     assert opts["noplaylist"] is True
     assert opts["outtmpl"] == str(DOWNLOAD_DIR / "%(title)s.%(ext)s")

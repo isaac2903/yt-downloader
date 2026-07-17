@@ -53,7 +53,13 @@ def _base_opts(outdir=DOWNLOAD_DIR, progress_hook=None) -> dict:
 def build_video_opts(height: int, outdir=DOWNLOAD_DIR, progress_hook=None) -> dict:
     """yt-dlp options for an MP4 download capped at the given height."""
     return _base_opts(outdir, progress_hook) | {
-        "format": f"bestvideo[height<={height}]+bestaudio/best[height<={height}]",
+        # H.264 + AAC so the MP4 plays everywhere (Telegram/iPhone can't
+        # decode the AV1 streams yt-dlp prefers by default); falls back to
+        # any codec when no H.264 variant exists.
+        "format": (
+            f"bestvideo[vcodec^=avc1][height<={height}]+bestaudio[ext=m4a]/"
+            f"bestvideo[height<={height}]+bestaudio/best[height<={height}]"
+        ),
         "merge_output_format": "mp4",
     }
 
