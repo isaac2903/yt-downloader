@@ -62,3 +62,23 @@ def test_parse_user_id():
     assert _parse_user_id("") == 0
     assert _parse_user_id("not-a-number") == 0
     assert _parse_user_id("12.5") == 0
+
+
+def test_video_attributes_extracts_dimensions():
+    from telegram_bot import video_attributes
+    info = {"width": 1920, "height": 1080, "duration": 858}
+    assert video_attributes(info) == {
+        "width": 1920,
+        "height": 1080,
+        "duration": 858,
+        "supports_streaming": True,
+    }
+
+
+def test_video_attributes_skips_missing_values():
+    from telegram_bot import video_attributes
+    assert video_attributes({}) == {"supports_streaming": True}
+    assert video_attributes({"width": None, "duration": 42}) == {
+        "duration": 42,
+        "supports_streaming": True,
+    }

@@ -78,6 +78,21 @@ def format_menu_keyboard() -> dict:
     }
 
 
+def video_attributes(info: dict) -> dict:
+    """sendVideo params from a yt-dlp info dict.
+
+    Telegram renders bot-uploaded videos in a square frame unless the
+    upload declares width/height, so pass along whatever yt-dlp knows.
+    """
+    attrs = {
+        key: info.get(key)
+        for key in ("width", "height", "duration")
+        if info.get(key)
+    }
+    attrs["supports_streaming"] = True
+    return attrs
+
+
 def resolution_keyboard(heights: list) -> dict:
     rows, row = [], []
     for h in heights:
@@ -108,14 +123,15 @@ def tg(method: str, **params):
     return data["result"]
 
 
-def tg_send_file(chat_id: int, path: Path, mode: str, title: str) -> bool:
+def tg_send_file(chat_id: int, path: Path, mode: str, title: str,
+                 attrs: dict = None) -> bool:
     """Upload a finished file into the chat. mode is 'audio' or 'video'."""
     method, field = ("sendAudio", "audio") if mode == "audio" else ("sendVideo", "video")
     try:
         with open(path, "rb") as f:
             resp = requests.post(
                 f"{API}/{method}",
-                data={"chat_id": chat_id, "caption": title},
+                data={"chat_id": chat_id, "caption": title} | (attrs or {}),
                 files={field: (path.name, f)},
                 timeout=600,
             )
@@ -168,11 +184,12 @@ def upload_rclone(chat_id: int, message_id: int, path: Path) -> None:
            text=f"❌ Drive upload failed — file kept at {path}")
 
 
-def deliver(chat_id: int, message_id: int, path: Path, mode: str, title: str) -> None:
+def deliver(chat_id: int, message_id: int, path: Path, mode: str, title: str,
+            attrs: dict = None) -> None:
     if deliver_via_chat(path.stat().st_size):
         tg("editMessageText", chat_id=chat_id, message_id=message_id,
            text="📤 Sending to chat…")
-        if tg_send_file(chat_id, path, mode, title):
+        if tg_send_file(chat_id, path, mode, title, attrs):
             tg("editMessageText", chat_id=chat_id, message_id=message_id,
                text=f"✅ {title}")
             shutil.rmtree(path.parent, ignore_errors=True)
@@ -203,8 +220,9 @@ def process_job(job: dict) -> None:
     except Exception:
         shutil.rmtree(outdir, ignore_errors=True)
         raise
+    attrs = video_attributes(info) if job["mode"] == "video" else None
     try:
-        deliver(chat_id, message_id, path, job["mode"], job["title"])
+        deliver(chat_id, message_id, path, job["mode"], job["title"], attrs)
     except Exception:
         shutil.rmtree(outdir, ignore_errors=True)
         raise
