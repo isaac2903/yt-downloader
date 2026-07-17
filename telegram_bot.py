@@ -200,6 +200,9 @@ def process_job(job: dict) -> None:
            text=f"❌ Download failed: {reason}")
         shutil.rmtree(outdir, ignore_errors=True)
         return
+    except Exception:
+        shutil.rmtree(outdir, ignore_errors=True)
+        raise
     deliver(chat_id, message_id, path, job["mode"], job["title"])
 
 
@@ -299,20 +302,28 @@ def main() -> None:
         try:
             resp = requests.post(f"{API}/getUpdates",
                                  json={"timeout": 60, "offset": offset}, timeout=70)
-            updates = resp.json().get("result", [])
+            data = resp.json()
         except (requests.RequestException, ValueError) as e:
             log.warning("poll error: %s", e)
             time.sleep(5)
             continue
+        if not data.get("ok"):
+            log.warning("getUpdates failed: %s", data.get("description"))
+            time.sleep(5)
+            continue
+        updates = data.get("result", [])
         for update in updates:
             offset = update["update_id"] + 1
-            source = update.get("message") or update.get("callback_query") or {}
-            if not is_authorized(source.get("from", {}).get("id"), ALLOWED_USER_ID):
-                continue  # silently ignore anyone else
-            if "message" in update:
-                handle_message(update["message"])
-            elif "callback_query" in update:
-                handle_callback(update["callback_query"])
+            try:
+                source = update.get("message") or update.get("callback_query") or {}
+                if not is_authorized(source.get("from", {}).get("id"), ALLOWED_USER_ID):
+                    continue  # silently ignore anyone else
+                if "message" in update:
+                    handle_message(update["message"])
+                elif "callback_query" in update:
+                    handle_callback(update["callback_query"])
+            except Exception:
+                log.exception("update handling failed")
 
 
 if __name__ == "__main__":
