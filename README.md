@@ -54,8 +54,9 @@ it to Google Drive via rclone (larger).
 
 ```sh
 # one-time system deps
-sudo apt install ffmpeg rclone
+sudo apt install ffmpeg rclone python3-venv
 curl -fsSL https://deno.land/install.sh | sh   # JS runtime for yt-dlp
+sudo cp ~/.deno/bin/deno /usr/local/bin/   # make deno visible to the systemd service
 
 git clone https://github.com/isaac2903/yt-downloader.git
 cd yt-downloader
