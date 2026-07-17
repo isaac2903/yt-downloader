@@ -105,6 +105,19 @@ def resolution_keyboard(heights: list) -> dict:
     return {"inline_keyboard": rows}
 
 
+def with_one_retry(fn, on_retry):
+    """Call fn; on a yt-dlp error, run on_retry and try fn once more.
+
+    YouTube intermittently rejects freshly signed media URLs (HTTP 403);
+    a second extraction usually gets working ones.
+    """
+    try:
+        return fn()
+    except yt_dlp.utils.YoutubeDLError:
+        on_retry()
+        return fn()
+
+
 # ---------------------------------------------------------------------------
 # Telegram API
 # ---------------------------------------------------------------------------
@@ -207,10 +220,18 @@ def process_job(job: dict) -> None:
         opts, suffix = build_audio_opts(outdir=outdir, progress_hook=hook), ".mp3"
     else:
         opts, suffix = build_video_opts(job["height"], outdir=outdir, progress_hook=hook), ".mp4"
-    try:
+    def download():
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(job["url"], download=True)
-            path = Path(ydl.prepare_filename(info)).with_suffix(suffix)
+            return Path(ydl.prepare_filename(info)).with_suffix(suffix), info
+
+    def announce_retry():
+        log.warning("download failed, retrying once: %s", job["url"])
+        tg("editMessageText", chat_id=chat_id, message_id=message_id,
+           text="⚠️ YouTube hiccup — retrying…")
+
+    try:
+        path, info = with_one_retry(download, announce_retry)
     except yt_dlp.utils.YoutubeDLError as e:
         reason = str(e).splitlines()[0][:200]
         tg("editMessageText", chat_id=chat_id, message_id=message_id,

@@ -82,3 +82,39 @@ def test_video_attributes_skips_missing_values():
         "duration": 42,
         "supports_streaming": True,
     }
+
+
+def test_with_one_retry_succeeds_first_try():
+    from telegram_bot import with_one_retry
+    retries = []
+    assert with_one_retry(lambda: "ok", retries.append) == "ok"
+    assert retries == []
+
+
+def test_with_one_retry_recovers_after_one_failure():
+    import yt_dlp
+    from telegram_bot import with_one_retry
+    calls = {"n": 0}
+    retried = []
+
+    def flaky():
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise yt_dlp.utils.DownloadError("HTTP Error 403: Forbidden")
+        return "ok"
+
+    assert with_one_retry(flaky, lambda: retried.append(1)) == "ok"
+    assert calls["n"] == 2
+    assert retried == [1]
+
+
+def test_with_one_retry_gives_up_after_second_failure():
+    import pytest
+    import yt_dlp
+    from telegram_bot import with_one_retry
+
+    def always_fails():
+        raise yt_dlp.utils.DownloadError("HTTP Error 403: Forbidden")
+
+    with pytest.raises(yt_dlp.utils.DownloadError):
+        with_one_retry(always_fails, lambda: None)
