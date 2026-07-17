@@ -1,4 +1,5 @@
 import queue
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -193,3 +194,66 @@ def test_handle_callback_rejects_download_that_exceeds_free_space(monkeypatch):
     assert bot.jobs.empty()
     assert chat_id not in bot.pending
     assert "Not enough space" in calls[-1][1]["text"]
+
+
+def test_build_rclone_command_uses_larger_chunks_and_periodic_stats():
+    from telegram_bot import build_rclone_command
+
+    command = build_rclone_command(Path("/tmp/video.mp4"))
+
+    assert command[:3] == ["rclone", "copy", "/tmp/video.mp4"]
+    assert "--drive-chunk-size=64M" in command
+    assert "--stats=10s" in command
+    assert "--stats-one-line" in command
+
+
+def test_parse_rclone_progress_extracts_transfer_stats():
+    from telegram_bot import parse_rclone_progress
+
+    line = "Transferred: 512 MiB / 1 GiB, 50%, 8 MiB/s, ETA 1m0s"
+    assert parse_rclone_progress(line) == line
+    current_line = (
+        "2026/07/17 13:44:54 INFO  :     6.090 MiB / 8 MiB, "
+        "76%, 1.732 MiB/s, ETA 1s"
+    )
+    assert parse_rclone_progress(current_line) == (
+        "6.090 MiB / 8 MiB, 76%, 1.732 MiB/s, ETA 1s"
+    )
+    assert parse_rclone_progress("INFO  : video.mp4: Copied (new)") is None
+
+
+def test_upload_rclone_reports_progress_and_cleans_up_on_success(
+        monkeypatch, tmp_path):
+    import telegram_bot as bot
+
+    outdir = tmp_path / "job"
+    outdir.mkdir()
+    path = outdir / "video.mp4"
+    path.write_bytes(b"video")
+    commands = []
+
+    class FakeProcess:
+        stderr = iter([
+            "Transferred: 512 MiB / 1 GiB, 50%, 8 MiB/s, ETA 1m0s\n",
+            "INFO  : video.mp4: Copied (new)\n",
+        ])
+
+        def wait(self):
+            return 0
+
+    def fake_popen(command, **_kwargs):
+        commands.append(command)
+        return FakeProcess()
+
+    calls = []
+    monkeypatch.setattr(bot.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(
+        bot, "tg", lambda method, **params: calls.append((method, params))
+    )
+
+    bot.upload_rclone(42, 7, path)
+
+    assert commands == [bot.build_rclone_command(path)]
+    assert any("50%" in params["text"] for _, params in calls)
+    assert calls[-1][1]["text"].startswith("☁️ Uploaded to Google Drive:")
+    assert not outdir.exists()

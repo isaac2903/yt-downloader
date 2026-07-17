@@ -219,19 +219,57 @@ def make_progress_hook(chat_id: int, message_id: int):
     return hook
 
 
+def build_rclone_command(path: Path) -> list[str]:
+    return [
+        "rclone", "copy", str(path), RCLONE_REMOTE,
+        "--drive-chunk-size=64M",
+        "--stats=10s",
+        "--stats-one-line",
+    ]
+
+
+def parse_rclone_progress(line: str):
+    marker = "Transferred:"
+    if marker in line:
+        progress = line[line.index(marker):].strip()
+    elif "INFO  :" in line:
+        progress = line.split("INFO  :", 1)[1].strip()
+    else:
+        return None
+    return progress if "%" in progress and "ETA " in progress else None
+
+
 def upload_rclone(chat_id: int, message_id: int, path: Path) -> None:
     tg("editMessageText", chat_id=chat_id, message_id=message_id,
        text="☁️ Uploading to Drive…")
-    result = subprocess.run(
-        ["rclone", "copy", str(path), RCLONE_REMOTE],
-        capture_output=True, text=True,
-    )
-    if result.returncode == 0:
+    try:
+        process = subprocess.Popen(
+            build_rclone_command(path),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+    except OSError as e:
+        log.error("could not start rclone: %s", e)
+        tg("editMessageText", chat_id=chat_id, message_id=message_id,
+           text=f"❌ Drive upload failed — file kept at {path}")
+        return
+
+    stderr_lines = []
+    for line in process.stderr:
+        stderr_lines.append(line)
+        progress = parse_rclone_progress(line)
+        if progress:
+            tg("editMessageText", chat_id=chat_id, message_id=message_id,
+               text=f"☁️ Uploading to Drive…\n{progress}")
+    returncode = process.wait()
+    if returncode == 0:
         tg("editMessageText", chat_id=chat_id, message_id=message_id,
            text=f"☁️ Uploaded to Google Drive: {path.name}")
         shutil.rmtree(path.parent, ignore_errors=True)
     else:
-        log.error("rclone failed: %s", result.stderr[-500:])
+        log.error("rclone failed: %s", "".join(stderr_lines)[-500:])
         tg("editMessageText", chat_id=chat_id, message_id=message_id,
            text=f"❌ Drive upload failed — file kept at {path}")
 
