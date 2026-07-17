@@ -15,8 +15,14 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
+
+def _parse_user_id(raw: str) -> int:
+	"""Best-effort numeric user id; malformed values behave like unset."""
+	return int(raw) if raw.isdigit() else 0
+
+
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
-ALLOWED_USER_ID = int(os.environ.get("ALLOWED_USER_ID", "0"))
+ALLOWED_USER_ID = _parse_user_id(os.environ.get("ALLOWED_USER_ID", ""))
 RCLONE_REMOTE = os.environ.get("RCLONE_REMOTE", "gdrive:YouTube")
 
 API = f"https://api.telegram.org/bot{BOT_TOKEN}"

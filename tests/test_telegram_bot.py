@@ -2,6 +2,7 @@ import pytest
 
 from telegram_bot import (
     MAX_CHAT_BYTES,
+    _parse_user_id,
     deliver_via_chat,
     format_menu_keyboard,
     is_authorized,
@@ -54,3 +55,10 @@ def test_resolution_keyboard_rows_of_three():
     assert len(rows) == 2 and len(rows[0]) == 3 and len(rows[1]) == 2
     assert rows[0][0] == {"text": "2160p", "callback_data": "v:2160"}
     assert rows[1][1] == {"text": "480p", "callback_data": "v:480"}
+
+
+def test_parse_user_id():
+    assert _parse_user_id("123456789") == 123456789
+    assert _parse_user_id("") == 0
+    assert _parse_user_id("not-a-number") == 0
+    assert _parse_user_id("12.5") == 0
