@@ -1,0 +1,18 @@
+[Unit]
+Description=yt-downloader Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=raspberrypi
+WorkingDirectory=/home/raspberrypi/yt-downloader
+ExecStart=/home/raspberrypi/yt-downloader/.venv/bin/python /home/raspberrypi/yt-downloader/telegram_bot.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
