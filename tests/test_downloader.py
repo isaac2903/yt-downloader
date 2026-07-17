@@ -90,3 +90,28 @@ def test_audio_opts_extract_mp3():
         }
     ]
     assert opts["outtmpl"] == str(DOWNLOAD_DIR / "%(title)s.%(ext)s")
+
+
+def test_video_opts_custom_outdir_and_hook():
+    calls = []
+    hook = calls.append
+    opts = build_video_opts(1080, outdir="/tmp/somewhere", progress_hook=hook)
+    assert opts["outtmpl"] == "/tmp/somewhere/%(title)s.%(ext)s"
+    assert opts["progress_hooks"] == [hook]
+
+
+def test_audio_opts_custom_outdir_and_hook():
+    hook = lambda d: None
+    opts = build_audio_opts(outdir="/tmp/elsewhere", progress_hook=hook)
+    assert opts["outtmpl"] == "/tmp/elsewhere/%(title)s.%(ext)s"
+    assert opts["progress_hooks"] == [hook]
+
+
+def test_opts_defaults_unchanged():
+    from downloader import _progress_hook
+    v = build_video_opts(720)
+    a = build_audio_opts()
+    assert v["outtmpl"] == str(DOWNLOAD_DIR / "%(title)s.%(ext)s")
+    assert a["outtmpl"] == str(DOWNLOAD_DIR / "%(title)s.%(ext)s")
+    assert v["progress_hooks"] == [_progress_hook]
+    assert a["progress_hooks"] == [_progress_hook]

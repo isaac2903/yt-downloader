@@ -30,8 +30,6 @@ def available_heights(info: dict) -> list[int]:
 
 DOWNLOAD_DIR = Path.home() / "Downloads"
 
-OUTPUT_TEMPLATE = str(DOWNLOAD_DIR / "%(title)s.%(ext)s")
-
 
 def _progress_hook(d: dict) -> None:
     if d["status"] == "downloading":
@@ -42,27 +40,27 @@ def _progress_hook(d: dict) -> None:
         print(f"\r  Download complete, processing...          ")
 
 
-def _base_opts() -> dict:
+def _base_opts(outdir=DOWNLOAD_DIR, progress_hook=None) -> dict:
     return {
-        "outtmpl": OUTPUT_TEMPLATE,
+        "outtmpl": str(Path(outdir) / "%(title)s.%(ext)s"),
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
-        "progress_hooks": [_progress_hook],
+        "progress_hooks": [progress_hook or _progress_hook],
     }
 
 
-def build_video_opts(height: int) -> dict:
+def build_video_opts(height: int, outdir=DOWNLOAD_DIR, progress_hook=None) -> dict:
     """yt-dlp options for an MP4 download capped at the given height."""
-    return _base_opts() | {
+    return _base_opts(outdir, progress_hook) | {
         "format": f"bestvideo[height<={height}]+bestaudio/best[height<={height}]",
         "merge_output_format": "mp4",
     }
 
 
-def build_audio_opts() -> dict:
+def build_audio_opts(outdir=DOWNLOAD_DIR, progress_hook=None) -> dict:
     """yt-dlp options for a best-audio download converted to 192kbps MP3."""
-    return _base_opts() | {
+    return _base_opts(outdir, progress_hook) | {
         "format": "bestaudio/best",
         "postprocessors": [
             {
