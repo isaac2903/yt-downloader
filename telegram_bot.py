@@ -39,6 +39,7 @@ API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 TMP_DIR = Path("/tmp/yt-downloader-bot")
 MAX_CHAT_BYTES = 49 * 1024 * 1024  # Telegram's bot upload cap is 50 MB
 EDIT_INTERVAL = 5.0  # min seconds between progress-message edits
+DISK_HEADROOM = 2.2  # ffmpeg merge needs the streams plus a merged copy
 
 log = logging.getLogger("yt-downloader-bot")
 
@@ -103,6 +104,44 @@ def resolution_keyboard(heights: list) -> dict:
     if row:
         rows.append(row)
     return {"inline_keyboard": rows}
+
+
+def estimate_download_size(info: dict, mode: str, height: int = None):
+    """Rough size in bytes of the selected download, or None if unknown.
+
+    Mirrors the format selection in downloader.py: best avc1 video at or
+    under the chosen height (falling back to any codec) plus best audio.
+    """
+    formats = info.get("formats", [])
+    duration = info.get("duration") or 0
+
+    def size_of(f):
+        size = f.get("filesize") or f.get("filesize_approx")
+        if size:
+            return size
+        if f.get("tbr") and duration:
+            return int(f["tbr"] * 1000 / 8 * duration)
+        return None
+
+    audio = [f for f in formats
+             if f.get("acodec") not in (None, "none")
+             and f.get("vcodec") in (None, "none")]
+    audio_size = max((size_of(f) or 0 for f in audio), default=0)
+    if mode == "audio":
+        return audio_size or None
+
+    videos = [f for f in formats
+              if f.get("vcodec") not in (None, "none")
+              and f.get("height") and f["height"] <= (height or 0)]
+    avc = [f for f in videos if str(f.get("vcodec", "")).startswith("avc1")]
+    pool = avc or videos
+    if not pool:
+        return None
+    best = max(pool, key=lambda f: (f["height"], size_of(f) or 0))
+    video_size = size_of(best)
+    if video_size is None:
+        return None
+    return video_size + audio_size
 
 
 def with_one_retry(fn, on_retry):
@@ -290,6 +329,7 @@ def handle_message(msg: dict) -> None:
             "title": title,
             "heights": available_heights(info),
             "message_id": sent["message_id"],
+            "info": info,
         }
 
 
@@ -314,6 +354,18 @@ def handle_callback(cb: dict) -> None:
             return
         tg("editMessageReplyMarkup", chat_id=chat_id, message_id=message_id,
            reply_markup=resolution_keyboard(state["heights"]))
+        return
+    estimate = estimate_download_size(state["info"], mode, height)
+    free = shutil.disk_usage(TMP_DIR.parent).free
+    if estimate and estimate * DISK_HEADROOM > free:
+        pending.pop(chat_id, None)
+        need_gb = estimate * DISK_HEADROOM / 1e9
+        free_gb = free / 1e9
+        hint = " Try a lower resolution." if mode == "video" else ""
+        tg("editMessageText", chat_id=chat_id, message_id=message_id,
+           text=(f"❌ Not enough space on the Pi: this needs ~{need_gb:.1f} GB "
+                 f"of working space (download + merge) but only {free_gb:.1f} GB "
+                 f"is free.{hint}"))
         return
     pending.pop(chat_id, None)
     tg("editMessageText", chat_id=chat_id, message_id=message_id,

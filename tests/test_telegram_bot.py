@@ -1,3 +1,6 @@
+import queue
+from types import SimpleNamespace
+
 import pytest
 
 from telegram_bot import (
@@ -118,3 +121,75 @@ def test_with_one_retry_gives_up_after_second_failure():
 
     with pytest.raises(yt_dlp.utils.DownloadError):
         with_one_retry(always_fails, lambda: None)
+
+
+def test_estimate_size_video_prefers_avc1_at_height():
+    from telegram_bot import estimate_download_size
+    info = {"duration": 100, "formats": [
+        {"vcodec": "avc1.64", "height": 1080, "acodec": "none", "filesize": 1000},
+        {"vcodec": "av01.0", "height": 1080, "acodec": "none", "filesize": 500},
+        {"vcodec": "avc1.4d", "height": 720, "acodec": "none", "filesize": 600},
+        {"vcodec": "none", "acodec": "mp4a", "filesize": 200},
+    ]}
+    assert estimate_download_size(info, "video", 1080) == 1200
+    assert estimate_download_size(info, "video", 720) == 800
+
+
+def test_estimate_size_audio_mode():
+    from telegram_bot import estimate_download_size
+    info = {"formats": [
+        {"vcodec": "none", "acodec": "opus", "filesize": 150},
+        {"vcodec": "none", "acodec": "mp4a", "filesize": 200},
+        {"vcodec": "avc1", "height": 720, "acodec": "none", "filesize": 999},
+    ]}
+    assert estimate_download_size(info, "audio") == 200
+
+
+def test_estimate_size_falls_back_to_bitrate_times_duration():
+    from telegram_bot import estimate_download_size
+    info = {"duration": 10, "formats": [
+        {"vcodec": "avc1", "height": 480, "acodec": "none", "tbr": 800},
+    ]}
+    # 800 kbit/s * 10s / 8 = 1,000,000 bytes
+    assert estimate_download_size(info, "video", 480) == 1_000_000
+
+
+def test_estimate_size_unknown_returns_none():
+    from telegram_bot import estimate_download_size
+    assert estimate_download_size({"formats": []}, "video", 720) is None
+    assert estimate_download_size({}, "audio") is None
+
+
+def test_handle_callback_rejects_download_that_exceeds_free_space(monkeypatch):
+    import telegram_bot as bot
+
+    chat_id, message_id = 42, 7
+    info = {"formats": [
+        {"vcodec": "avc1", "height": 1080, "acodec": "none", "filesize": 1000},
+        {"vcodec": "none", "acodec": "mp4a", "filesize": 200},
+    ]}
+    monkeypatch.setattr(bot, "pending", {chat_id: {
+        "url": "https://youtu.be/abcdefghijk",
+        "title": "Large video",
+        "heights": [1080],
+        "message_id": message_id,
+        "info": info,
+    }})
+    monkeypatch.setattr(bot, "jobs", queue.Queue())
+    monkeypatch.setattr(
+        bot.shutil, "disk_usage", lambda _path: SimpleNamespace(free=2000)
+    )
+    calls = []
+    monkeypatch.setattr(
+        bot, "tg", lambda method, **params: calls.append((method, params))
+    )
+
+    bot.handle_callback({
+        "id": "callback-1",
+        "data": "v:1080",
+        "message": {"chat": {"id": chat_id}, "message_id": message_id},
+    })
+
+    assert bot.jobs.empty()
+    assert chat_id not in bot.pending
+    assert "Not enough space" in calls[-1][1]["text"]
