@@ -27,8 +27,8 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 
 
 def _parse_user_id(raw: str) -> int:
-	"""Best-effort numeric user id; malformed values behave like unset."""
-	return int(raw) if raw.isdigit() else 0
+    """Best-effort numeric user id; malformed values behave like unset."""
+    return int(raw) if raw.isdigit() else 0
 
 
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
@@ -203,7 +203,11 @@ def process_job(job: dict) -> None:
     except Exception:
         shutil.rmtree(outdir, ignore_errors=True)
         raise
-    deliver(chat_id, message_id, path, job["mode"], job["title"])
+    try:
+        deliver(chat_id, message_id, path, job["mode"], job["title"])
+    except Exception:
+        shutil.rmtree(outdir, ignore_errors=True)
+        raise
 
 
 def worker() -> None:
