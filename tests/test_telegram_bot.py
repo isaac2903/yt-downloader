@@ -90,6 +90,100 @@ def test_boolean_env_accepts_explicit_true_values(monkeypatch):
     assert bot._boolean_env("TEST_BOOLEAN") is False
 
 
+def test_tg_send_file_uses_file_uri_in_local_mode(monkeypatch, tmp_path):
+    import telegram_bot as bot
+
+    path = tmp_path / "video.mp4"
+    path.write_bytes(b"video")
+    captured = {}
+
+    class Response:
+        def json(self):
+            return {"ok": True}
+
+    def fake_post(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response()
+
+    monkeypatch.setattr(bot, "TELEGRAM_LOCAL_MODE", True)
+    monkeypatch.setattr(bot, "TELEGRAM_UPLOAD_TIMEOUT_SECONDS", 3600)
+    monkeypatch.setattr(bot.requests, "post", fake_post)
+
+    assert bot.tg_send_file(42, path, "video", "Example") is True
+    assert captured["data"]["video"] == path.resolve().as_uri()
+    assert "files" not in captured
+    assert captured["timeout"] == 3600
+
+
+def test_tg_send_file_keeps_multipart_for_hosted_api(monkeypatch, tmp_path):
+    import telegram_bot as bot
+
+    path = tmp_path / "audio.mp3"
+    path.write_bytes(b"audio")
+    captured = {}
+
+    class Response:
+        def json(self):
+            return {"ok": True}
+
+    def fake_post(_url, **kwargs):
+        captured["filename"] = kwargs["files"]["audio"][0]
+        captured["body"] = kwargs["files"]["audio"][1].read()
+        return Response()
+
+    monkeypatch.setattr(bot, "TELEGRAM_LOCAL_MODE", False)
+    monkeypatch.setattr(bot.requests, "post", fake_post)
+
+    assert bot.tg_send_file(42, path, "audio", "Example") is True
+    assert captured == {"filename": "audio.mp3", "body": b"audio"}
+
+
+def test_deliver_falls_back_to_drive_after_telegram_failure(
+        monkeypatch, tmp_path):
+    import telegram_bot as bot
+
+    outdir = tmp_path / "job"
+    outdir.mkdir()
+    path = outdir / "video.mp4"
+    path.write_bytes(b"video")
+    drive_calls = []
+
+    monkeypatch.setattr(bot, "MAX_CHAT_BYTES", 1_900_000_000)
+    monkeypatch.setattr(bot, "tg", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(bot, "tg_send_file", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(
+        bot, "upload_rclone",
+        lambda chat_id, message_id, upload_path:
+            drive_calls.append((chat_id, message_id, upload_path)),
+    )
+
+    bot.deliver(42, 7, path, "video", "Example")
+    assert drive_calls == [(42, 7, path)]
+    assert path.exists()
+
+
+def test_format_file_size_uses_mb_and_gb():
+    from telegram_bot import format_file_size
+
+    assert format_file_size(55_000_000) == "55.0 MB"
+    assert format_file_size(1_500_000_000) == "1.50 GB"
+
+
+def test_request_exception_log_does_not_expose_token(monkeypatch, caplog):
+    import requests
+    import telegram_bot as bot
+
+    def raise_request_error(*_args, **_kwargs):
+        raise requests.RequestException(
+            "https://example/botSECRET/sendMessage"
+        )
+
+    monkeypatch.setattr(bot.requests, "post", raise_request_error)
+
+    assert bot.tg("sendMessage", chat_id=42, text="test") is None
+    assert "SECRET" not in caplog.text
+
+
 def test_video_attributes_extracts_dimensions():
     from telegram_bot import video_attributes
     info = {"width": 1920, "height": 1080, "duration": 858}

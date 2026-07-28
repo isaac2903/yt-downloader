@@ -190,7 +190,7 @@ def tg(method: str, **params):
         resp = requests.post(f"{API}/{method}", json=params, timeout=70)
         data = resp.json()
     except (requests.RequestException, ValueError) as e:
-        log.warning("telegram %s error: %s", method, e)
+        log.warning("telegram %s error (%s)", method, type(e).__name__)
         return None
     if not data.get("ok"):
         log.warning("telegram %s failed: %s", method, data.get("description"))
@@ -202,17 +202,26 @@ def tg_send_file(chat_id: int, path: Path, mode: str, title: str,
                  attrs: dict = None) -> bool:
     """Upload a finished file into the chat. mode is 'audio' or 'video'."""
     method, field = ("sendAudio", "audio") if mode == "audio" else ("sendVideo", "video")
+    payload = {"chat_id": chat_id, "caption": title} | (attrs or {})
     try:
-        with open(path, "rb") as f:
+        if TELEGRAM_LOCAL_MODE:
+            payload[field] = path.resolve().as_uri()
             resp = requests.post(
                 f"{API}/{method}",
-                data={"chat_id": chat_id, "caption": title} | (attrs or {}),
-                files={field: (path.name, f)},
-                timeout=600,
+                data=payload,
+                timeout=TELEGRAM_UPLOAD_TIMEOUT_SECONDS,
             )
+        else:
+            with open(path, "rb") as f:
+                resp = requests.post(
+                    f"{API}/{method}",
+                    data=payload,
+                    files={field: (path.name, f)},
+                    timeout=TELEGRAM_UPLOAD_TIMEOUT_SECONDS,
+                )
         return bool(resp.json().get("ok"))
     except (requests.RequestException, ValueError, OSError) as e:
-        log.warning("file upload failed: %s", e)
+        log.warning("file upload failed (%s)", type(e).__name__)
         return False
 
 
@@ -297,11 +306,19 @@ def upload_rclone(chat_id: int, message_id: int, path: Path) -> None:
            text=f"❌ Drive upload failed — file kept at {path}")
 
 
+def format_file_size(size_bytes: int) -> str:
+    if size_bytes >= 1_000_000_000:
+        return f"{size_bytes / 1_000_000_000:.2f} GB"
+    return f"{size_bytes / 1_000_000:.1f} MB"
+
+
 def deliver(chat_id: int, message_id: int, path: Path, mode: str, title: str,
             attrs: dict = None) -> None:
-    if deliver_via_chat(path.stat().st_size):
+    size_bytes = path.stat().st_size
+    if deliver_via_chat(size_bytes):
         tg("editMessageText", chat_id=chat_id, message_id=message_id,
-           text="📤 Sending to chat…")
+           text=(f"📤 Sending to Telegram…\n{format_file_size(size_bytes)} — "
+                 "large uploads may take several minutes."))
         if tg_send_file(chat_id, path, mode, title, attrs):
             tg("editMessageText", chat_id=chat_id, message_id=message_id,
                text=f"✅ {title}")
@@ -460,7 +477,7 @@ def main() -> None:
                                  json={"timeout": 60, "offset": offset}, timeout=70)
             data = resp.json()
         except (requests.RequestException, ValueError) as e:
-            log.warning("poll error: %s", e)
+            log.warning("poll error (%s)", type(e).__name__)
             time.sleep(5)
             continue
         if not data.get("ok"):
