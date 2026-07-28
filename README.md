@@ -88,16 +88,37 @@ MAX_CHAT_BYTES=1900000000
 TELEGRAM_UPLOAD_TIMEOUT_SECONDS=3600
 ```
 
-The included `telegram-bot-api.service` runs the official server only on
-`127.0.0.1:8081`; do not expose that port through a router or public tunnel.
-Its Telegram API credentials belong in `/etc/telegram-bot-api.env`, owned by
-root with mode `0600`, as `TELEGRAM_API_ID` and `TELEGRAM_API_HASH`. Keep the
-bot token in the project's ignored `.env` file. The optional
-`yt-downloader-bot-local-api.conf` drop-in makes the downloader wait for the
-local API service.
+Run the local API server from the pinned ARM64
+[`aiogram/telegram-bot-api`](https://github.com/aiogram/telegram-bot-api)
+container. Keep it bound to `127.0.0.1:8081`; do not expose that port through
+a router or public tunnel. Store the Telegram API credentials in the separate
+root-owned `0600` files shown below, not in Docker environment values:
 
-Build the server from Telegram's
-[official source](https://github.com/tdlib/telegram-bot-api) and read its
+```sh
+sudo install -d -m 700 /etc/telegram-bot-api /var/lib/telegram-bot-api
+sudo install -d -m 755 -o raspberrypi -g raspberrypi /tmp/yt-downloader-bot
+sudo install -m 600 /dev/null /etc/telegram-bot-api/api-id
+sudo install -m 600 /dev/null /etc/telegram-bot-api/api-hash
+# Write api_id to api-id and api_hash to api-hash without printing them.
+
+docker run -d \
+  --name telegram-bot-api \
+  --restart unless-stopped \
+  --security-opt no-new-privileges:true \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
+  -p 127.0.0.1:8081:8081 \
+  -e TELEGRAM_API_ID_FILE=/run/secrets/telegram_api_id \
+  -e TELEGRAM_API_HASH_FILE=/run/secrets/telegram_api_hash \
+  -e TELEGRAM_LOCAL=1 \
+  -v /etc/telegram-bot-api/api-id:/run/secrets/telegram_api_id:ro \
+  -v /etc/telegram-bot-api/api-hash:/run/secrets/telegram_api_hash:ro \
+  -v /var/lib/telegram-bot-api:/var/lib/telegram-bot-api \
+  -v /tmp/yt-downloader-bot:/tmp/yt-downloader-bot:ro \
+  aiogram/telegram-bot-api:9.6-linuxarm64@sha256:7c37b90c8e17c42d16ffb7c7ca0bd8db5275e63045436462e752376567b04972
+```
+
+The container packages Telegram's official server; see its
 [local-mode documentation](https://github.com/tdlib/telegram-bot-api#usage).
 Before the first local login, the bot must be deregistered from the hosted API
 with [`logOut`](https://core.telegram.org/bots/api#logout). A successful logout
