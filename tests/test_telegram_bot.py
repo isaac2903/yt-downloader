@@ -68,6 +68,28 @@ def test_parse_user_id():
     assert _parse_user_id("12.5") == 0
 
 
+def test_positive_int_env_uses_valid_value_and_rejects_invalid(monkeypatch):
+    import telegram_bot as bot
+
+    monkeypatch.setenv("TEST_POSITIVE_INT", "1900000000")
+    assert bot._positive_int_env("TEST_POSITIVE_INT", 49) == 1_900_000_000
+
+    for invalid in ("", "nope", "0", "-1"):
+        monkeypatch.setenv("TEST_POSITIVE_INT", invalid)
+        assert bot._positive_int_env("TEST_POSITIVE_INT", 49) == 49
+
+
+def test_boolean_env_accepts_explicit_true_values(monkeypatch):
+    import telegram_bot as bot
+
+    for value in ("1", "true", "TRUE", "yes", "on"):
+        monkeypatch.setenv("TEST_BOOLEAN", value)
+        assert bot._boolean_env("TEST_BOOLEAN") is True
+
+    monkeypatch.setenv("TEST_BOOLEAN", "false")
+    assert bot._boolean_env("TEST_BOOLEAN") is False
+
+
 def test_video_attributes_extracts_dimensions():
     from telegram_bot import video_attributes
     info = {"width": 1920, "height": 1080, "duration": 858}

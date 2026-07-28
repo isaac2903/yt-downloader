@@ -31,13 +31,36 @@ def _parse_user_id(raw: str) -> int:
     return int(raw) if raw.isdigit() else 0
 
 
+def _positive_int_env(name: str, default: int) -> int:
+    try:
+        value = int(os.environ.get(name, ""))
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def _boolean_env(name: str, default: bool = False) -> bool:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 ALLOWED_USER_ID = _parse_user_id(os.environ.get("ALLOWED_USER_ID", ""))
 RCLONE_REMOTE = os.environ.get("RCLONE_REMOTE", "gdrive:YouTube")
+TELEGRAM_API_BASE = (
+    os.environ.get("TELEGRAM_API_BASE", "https://api.telegram.org").strip()
+    or "https://api.telegram.org"
+).rstrip("/")
+TELEGRAM_LOCAL_MODE = _boolean_env("TELEGRAM_LOCAL_MODE")
+MAX_CHAT_BYTES = _positive_int_env("MAX_CHAT_BYTES", 49 * 1024 * 1024)
+TELEGRAM_UPLOAD_TIMEOUT_SECONDS = _positive_int_env(
+    "TELEGRAM_UPLOAD_TIMEOUT_SECONDS", 600
+)
 
-API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+API = f"{TELEGRAM_API_BASE}/bot{BOT_TOKEN}"
 TMP_DIR = Path("/tmp/yt-downloader-bot")
-MAX_CHAT_BYTES = 49 * 1024 * 1024  # Telegram's bot upload cap is 50 MB
 EDIT_INTERVAL = 5.0  # min seconds between progress-message edits
 DISK_HEADROOM = 2.2  # ffmpeg merge needs the streams plus a merged copy
 
