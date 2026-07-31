@@ -1,21 +1,41 @@
-"""Interactive CLI for downloading YouTube videos via yt-dlp."""
+"""Interactive CLI for downloading public videos via yt-dlp."""
 
-import re
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import yt_dlp
 
-YOUTUBE_URL_RE = re.compile(
-    r"^https?://"
-    r"(?:(?:www\.|m\.)?youtube\.com/(?:watch\?\S*v=|shorts/)|youtu\.be/)"
-    r"[\w-]{6,}",
-    re.IGNORECASE,
+SUPPORTED_HOSTS = frozenset(
+    {
+        "youtube.com",
+        "www.youtube.com",
+        "m.youtube.com",
+        "youtu.be",
+        "x.com",
+        "www.x.com",
+        "mobile.x.com",
+        "twitter.com",
+        "www.twitter.com",
+        "mobile.twitter.com",
+        "rumble.com",
+        "www.rumble.com",
+    }
 )
 
 
-def is_youtube_url(url: str) -> bool:
-    """Return True if url looks like a YouTube single-video URL."""
-    return bool(YOUTUBE_URL_RE.match(url))
+def is_supported_url(url: str) -> bool:
+    """Return True for an HTTP URL on an explicitly supported hostname."""
+    try:
+        parsed = urlsplit(url)
+        hostname = parsed.hostname
+        parsed.port
+    except ValueError:
+        return False
+    return (
+        parsed.scheme.lower() in {"http", "https"}
+        and hostname is not None
+        and hostname.lower() in SUPPORTED_HOSTS
+    )
 
 
 def available_heights(info: dict) -> list[int]:
@@ -116,11 +136,11 @@ def download(url: str) -> None:
 
 
 def main() -> None:
-    print("yt-downloader — paste a YouTube link, get the video.")
+    print("yt-downloader — public YouTube, X/Twitter, and Rumble videos.")
     print(f"Files are saved to {DOWNLOAD_DIR}")
     while True:
         try:
-            url = input("\nYouTube URL (q to quit): ").strip()
+            url = input("\nVideo URL (q to quit): ").strip()
         except (KeyboardInterrupt, EOFError):
             print()
             return
@@ -128,8 +148,8 @@ def main() -> None:
             return
         if not url:
             continue
-        if not is_youtube_url(url):
-            print("  That doesn't look like a YouTube video URL. Try again.")
+        if not is_supported_url(url):
+            print("  Send a public YouTube, X/Twitter, or Rumble video URL.")
             continue
         try:
             download(url)

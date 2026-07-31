@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Telegram bot front-end for yt-downloader.
 
-Long-polls the Telegram Bot API; downloads requested YouTube video/audio
+Long-polls the Telegram Bot API; downloads requested public video/audio
 via yt-dlp and delivers small files back in the chat, large files to a
 cloud remote via rclone. Designed to run 24/7 under systemd on a
 Raspberry Pi.
@@ -21,7 +21,7 @@ import requests
 import yt_dlp
 from dotenv import load_dotenv
 
-from downloader import available_heights, build_audio_opts, build_video_opts, is_youtube_url
+from downloader import available_heights, build_audio_opts, build_video_opts, is_supported_url
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -386,9 +386,9 @@ def worker() -> None:
 def handle_message(msg: dict) -> None:
     chat_id = msg["chat"]["id"]
     text = (msg.get("text") or "").strip()
-    if not is_youtube_url(text):
+    if not is_supported_url(text):
         tg("sendMessage", chat_id=chat_id,
-           text="Send me a YouTube link and I'll download it 🎬")
+           text="Send me a public YouTube, X/Twitter, or Rumble video link 🎬")
         return
     tg("sendChatAction", chat_id=chat_id, action="typing")
     try:

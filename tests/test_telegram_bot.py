@@ -373,3 +373,29 @@ def test_upload_rclone_reports_progress_and_cleans_up_on_success(
     assert any("50%" in params["text"] for _, params in calls)
     assert calls[-1][1]["text"].startswith("☁️ Uploaded to Google Drive:")
     assert not outdir.exists()
+
+
+def test_handle_message_rejects_unsupported_host(monkeypatch):
+    import telegram_bot as bot
+
+    calls = []
+    monkeypatch.setattr(
+        bot,
+        "tg",
+        lambda method, **params: calls.append((method, params)),
+    )
+
+    bot.handle_message({"chat": {"id": 42}, "text": "https://vimeo.com/123"})
+
+    assert calls == [
+        (
+            "sendMessage",
+            {
+                "chat_id": 42,
+                "text": (
+                    "Send me a public YouTube, X/Twitter, or Rumble "
+                    "video link 🎬"
+                ),
+            },
+        )
+    ]

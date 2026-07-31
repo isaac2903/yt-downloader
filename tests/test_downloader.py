@@ -1,36 +1,39 @@
-from downloader import is_youtube_url, available_heights
+import pytest
+
+from downloader import available_heights, is_supported_url
 
 
-def test_accepts_standard_watch_url():
-    assert is_youtube_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://youtu.be/dQw4w9WgXcQ",
+        "https://m.youtube.com/shorts/abc123DEF45",
+        "https://x.com/example/status/1234567890",
+        "https://mobile.twitter.com/example/status/1234567890",
+        "https://rumble.com/v123abc-example.html",
+        "https://WWW.X.COM/example/status/1234567890",
+    ],
+)
+def test_accepts_supported_platform_url(url):
+    assert is_supported_url(url)
 
 
-def test_accepts_short_url():
-    assert is_youtube_url("https://youtu.be/dQw4w9WgXcQ")
-
-
-def test_accepts_shorts_url():
-    assert is_youtube_url("https://www.youtube.com/shorts/abc123DEF45")
-
-
-def test_accepts_mobile_url():
-    assert is_youtube_url("https://m.youtube.com/watch?v=dQw4w9WgXcQ")
-
-
-def test_accepts_uppercase_host():
-    assert is_youtube_url("https://WWW.YouTube.com/watch?v=dQw4w9WgXcQ")
-
-
-def test_rejects_non_youtube_url():
-    assert not is_youtube_url("https://vimeo.com/12345")
-
-
-def test_rejects_garbage():
-    assert not is_youtube_url("not a url at all")
-
-
-def test_rejects_empty_string():
-    assert not is_youtube_url("")
+@pytest.mark.parametrize(
+    "url",
+    [
+        "",
+        "not a url",
+        "ftp://x.com/example/status/123",
+        "https://vimeo.com/12345",
+        "https://t.co/abc123",
+        "https://x.com.evil.example/status/123",
+        "https://rumble.com.evil.example/v123.html",
+        "https://x.com:bad-port/example/status/123",
+    ],
+)
+def test_rejects_unsupported_or_malformed_url(url):
+    assert not is_supported_url(url)
 
 
 def test_extracts_unique_heights_sorted_descending():
