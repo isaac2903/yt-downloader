@@ -1,7 +1,7 @@
 # yt-downloader
 
-Interactive CLI for downloading YouTube videos as MP4 (pick a resolution) or
-MP3. Files are saved to `~/Downloads`.
+Interactive CLI for downloading public single videos from YouTube, X/Twitter,
+or Rumble as MP4 (pick a resolution) or MP3. Files are saved to `~/Downloads`.
 
 ## Requirements
 
@@ -21,9 +21,9 @@ python3 -m venv .venv
 ./ytdl
 ```
 
-Paste a YouTube link when prompted, choose Video (MP4) or Audio only (MP3),
-pick a resolution for video, and the file lands in `~/Downloads`. Enter `q`
-to quit.
+Paste a public YouTube, X/Twitter, or Rumble video link when prompted, choose
+Video (MP4) or Audio only (MP3), pick a resolution for video, and the file
+lands in `~/Downloads`. Enter `q` to quit.
 
 ## Development
 
@@ -34,9 +34,12 @@ to quit.
 
 ## Telegram bot
 
-Send a YouTube link to your private bot; it downloads on the machine
-running the bot and sends the file back in the chat (≤49 MB) or uploads
-it to Google Drive via rclone (larger).
+Send a public YouTube, X/Twitter, or Rumble single-video link to your private
+bot; it downloads on the machine running the bot and follows the configured
+Telegram or Google Drive delivery threshold.
+
+Playlists, channels/profiles, multi-video posts, Spaces/audio-only pages,
+active livestreams, and login-required media are not supported.
 
 ### Setup
 
