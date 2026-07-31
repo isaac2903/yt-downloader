@@ -1,6 +1,6 @@
 import pytest
 
-from downloader import available_heights, is_supported_url
+from downloader import available_heights, is_single_video_info, is_supported_url
 
 
 @pytest.mark.parametrize(
@@ -121,3 +121,59 @@ def test_opts_defaults_unchanged():
     assert a["outtmpl"] == str(DOWNLOAD_DIR / "%(title)s.%(ext)s")
     assert v["progress_hooks"] == [_progress_hook]
     assert a["progress_hooks"] == [_progress_hook]
+
+
+def test_accepts_finite_single_video_info():
+    assert is_single_video_info(
+        {"formats": [{"vcodec": "avc1.4d", "height": 720}]}
+    )
+
+
+@pytest.mark.parametrize(
+    "info",
+    [
+        {"_type": "playlist", "entries": [{"id": "1"}]},
+        {
+            "_type": "multi_video",
+            "entries": [{"id": "1"}, {"id": "2"}],
+        },
+        {"entries": [{"id": "1"}]},
+        {"formats": [{"vcodec": "none", "acodec": "opus"}]},
+        {"is_live": True, "formats": [{"vcodec": "avc1"}]},
+        {"live_status": "is_live", "formats": [{"vcodec": "avc1"}]},
+    ],
+)
+def test_rejects_non_single_or_non_finite_video_info(info):
+    assert not is_single_video_info(info)
+
+
+def test_download_stops_before_menu_for_ineligible_info(monkeypatch, capsys):
+    import downloader
+
+    class FakeYDL:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def extract_info(self, _url, download):
+            assert download is False
+            return {"_type": "playlist", "entries": [{"id": "1"}]}
+
+    monkeypatch.setattr(
+        downloader.yt_dlp,
+        "YoutubeDL",
+        lambda _opts: FakeYDL(),
+    )
+    monkeypatch.setattr(
+        downloader,
+        "_prompt_choice",
+        lambda *_args, **_kwargs: pytest.fail("format menu must not open"),
+    )
+
+    downloader.download("https://www.youtube.com/playlist?list=example")
+
+    assert "Only public, finished single-video links are supported." in (
+        capsys.readouterr().out
+    )

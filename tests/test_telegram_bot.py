@@ -399,3 +399,51 @@ def test_handle_message_rejects_unsupported_host(monkeypatch):
             },
         )
     ]
+
+
+def test_handle_message_rejects_playlist_metadata(monkeypatch):
+    import telegram_bot as bot
+
+    class FakeYDL:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def extract_info(self, _url, download):
+            assert download is False
+            return {"_type": "playlist", "entries": [{"id": "1"}]}
+
+    calls = []
+    bot.pending.pop(42, None)
+    monkeypatch.setattr(
+        bot.yt_dlp,
+        "YoutubeDL",
+        lambda _opts: FakeYDL(),
+    )
+    monkeypatch.setattr(
+        bot,
+        "tg",
+        lambda method, **params: calls.append((method, params)),
+    )
+
+    bot.handle_message(
+        {
+            "chat": {"id": 42},
+            "text": "https://www.youtube.com/playlist?list=example",
+        }
+    )
+
+    assert calls[-1] == (
+        "sendMessage",
+        {
+            "chat_id": 42,
+            "text": (
+                "❌ Only public, finished single videos are supported—no "
+                "playlists, channels, Spaces, multi-video posts, or live "
+                "streams."
+            ),
+        },
+    )
+    assert 42 not in bot.pending

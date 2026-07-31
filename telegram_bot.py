@@ -21,7 +21,13 @@ import requests
 import yt_dlp
 from dotenv import load_dotenv
 
-from downloader import available_heights, build_audio_opts, build_video_opts, is_supported_url
+from downloader import (
+    available_heights,
+    build_audio_opts,
+    build_video_opts,
+    is_single_video_info,
+    is_supported_url,
+)
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
@@ -397,6 +403,16 @@ def handle_message(msg: dict) -> None:
     except yt_dlp.utils.YoutubeDLError as e:
         reason = str(e).splitlines()[0][:200]
         tg("sendMessage", chat_id=chat_id, text=f"❌ Couldn't fetch that video: {reason}")
+        return
+    if not is_single_video_info(info):
+        tg(
+            "sendMessage",
+            chat_id=chat_id,
+            text=(
+                "❌ Only public, finished single videos are supported—no "
+                "playlists, channels, Spaces, multi-video posts, or live streams."
+            ),
+        )
         return
     title = info.get("title", "unknown")
     sent = tg("sendMessage", chat_id=chat_id, text=f"🎯 {title}\nChoose format:",

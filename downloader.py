@@ -38,6 +38,20 @@ def is_supported_url(url: str) -> bool:
     )
 
 
+def is_single_video_info(info: dict) -> bool:
+    """Return True for one finished item containing a video stream."""
+    if info.get("_type") in {"playlist", "multi_video"}:
+        return False
+    if info.get("entries") is not None:
+        return False
+    if info.get("is_live") or info.get("live_status") == "is_live":
+        return False
+    return any(
+        fmt.get("vcodec") not in (None, "none")
+        for fmt in info.get("formats", [])
+    )
+
+
 def available_heights(info: dict) -> list[int]:
     """Return unique video heights in info's formats, highest first."""
     heights = {
@@ -114,6 +128,9 @@ def download(url: str) -> None:
     print("  Fetching video info...")
     with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
         info = ydl.extract_info(url, download=False)
+    if not is_single_video_info(info):
+        print("  Only public, finished single-video links are supported.")
+        return
     print(f"  Title: {info.get('title', 'unknown')}")
 
     mode = _prompt_choice("Choose format: ", ["Video (MP4)", "Audio only (MP3)"])
