@@ -126,7 +126,7 @@ def _prompt_choice(prompt: str, choices: list[str]) -> int:
 def download(url: str) -> None:
     """Fetch info for url, ask video/audio + resolution, download."""
     print("  Fetching video info...")
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
+    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": False}) as ydl:
         info = ydl.extract_info(url, download=False)
     if not is_single_video_info(info):
         print("  Only public, finished single-video links are supported.")

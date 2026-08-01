@@ -398,7 +398,7 @@ def handle_message(msg: dict) -> None:
         return
     tg("sendChatAction", chat_id=chat_id, action="typing")
     try:
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": True}) as ydl:
+        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": False}) as ydl:
             info = ydl.extract_info(text, download=False)
     except yt_dlp.utils.YoutubeDLError as e:
         reason = str(e).splitlines()[0][:200]

@@ -177,3 +177,39 @@ def test_download_stops_before_menu_for_ineligible_info(monkeypatch, capsys):
     assert "Only public, finished single-video links are supported." in (
         capsys.readouterr().out
     )
+
+
+def test_download_rejects_x_video_selector_before_menu(monkeypatch, capsys):
+    import downloader
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def extract_info(self, _url, download):
+            assert download is False
+            if self.opts["noplaylist"]:
+                return {"formats": [{"vcodec": "avc1", "height": 720}]}
+            return {
+                "_type": "multi_video",
+                "entries": [{"id": "1"}, {"id": "2"}],
+            }
+
+    monkeypatch.setattr(downloader.yt_dlp, "YoutubeDL", FakeYDL)
+    monkeypatch.setattr(
+        downloader,
+        "_prompt_choice",
+        lambda *_args, **_kwargs: pytest.fail("format menu must not open"),
+    )
+
+    downloader.download("https://x.com/example/status/123/video/1")
+
+    assert "Only public, finished single-video links are supported." in (
+        capsys.readouterr().out
+    )

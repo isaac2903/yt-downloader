@@ -447,3 +447,49 @@ def test_handle_message_rejects_playlist_metadata(monkeypatch):
         },
     )
     assert 42 not in bot.pending
+
+
+def test_handle_message_rejects_x_video_selector_without_pending_state(monkeypatch):
+    import telegram_bot as bot
+
+    class FakeYDL:
+        def __init__(self, opts):
+            self.opts = opts
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+        def extract_info(self, _url, download):
+            assert download is False
+            if self.opts["noplaylist"]:
+                return {"formats": [{"vcodec": "avc1", "height": 720}]}
+            return {
+                "_type": "multi_video",
+                "entries": [{"id": "1"}, {"id": "2"}],
+            }
+
+    calls = []
+
+    def fake_tg(method, **params):
+        calls.append((method, params))
+        if params.get("text", "").endswith("Choose format:"):
+            return {"message_id": 9}
+        return None
+
+    bot.pending.pop(42, None)
+    monkeypatch.setattr(bot.yt_dlp, "YoutubeDL", FakeYDL)
+    monkeypatch.setattr(bot, "tg", fake_tg)
+
+    bot.handle_message(
+        {
+            "chat": {"id": 42},
+            "text": "https://x.com/example/status/123/video/1",
+        }
+    )
+
+    assert 42 not in bot.pending
+    assert all(not params.get("text", "").endswith("Choose format:")
+               for _, params in calls)
