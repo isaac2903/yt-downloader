@@ -59,9 +59,86 @@ def test_ignores_audio_only_formats():
     assert available_heights(info) == [480]
 
 
+def test_available_heights_includes_unset_vcodec_with_height():
+    # Rumble HLS formats leave vcodec unset (None) but are video streams.
+    info = {
+        "formats": [
+            {"height": 1080, "vcodec": None},
+            {"height": 720, "vcodec": None},
+            {"height": 192, "vcodec": "none"},
+        ]
+    }
+    assert available_heights(info) == [1080, 720]
+
+
+def test_accepts_video_info_with_unset_vcodec():
+    assert is_single_video_info(
+        {"formats": [{"vcodec": None, "height": 1080}]}
+    )
+
+
 def test_empty_formats_returns_empty_list():
     assert available_heights({"formats": []}) == []
     assert available_heights({}) == []
+
+
+def test_impersonate_target_is_none_for_non_rumble_hosts():
+    from downloader import impersonate_target_for
+    for url in [
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+        "https://x.com/example/status/1234567890",
+        "https://mobile.twitter.com/example/status/1234567890",
+        "https://vimeo.com/12345",
+        "",
+        "not a url",
+    ]:
+        assert impersonate_target_for(url) is None
+
+
+def test_impersonate_target_for_rumble_does_not_raise():
+    from downloader import impersonate_target_for
+    result = impersonate_target_for("https://rumble.com/v123abc-example.html")
+    assert result is None or result.client == "chrome"
+
+
+def test_postprocess_rumble_info_removes_timeline_and_fixes_acodec():
+    from downloader import postprocess_rumble_info
+    info = {"formats": [
+        {"format_id": "hls-4624", "vcodec": None, "acodec": None, "height": 1080,
+         "protocol": "m3u8_native"},
+        {"format_id": "timeline-180p", "vcodec": None, "acodec": "none",
+         "height": 180, "format_note": "Timeline", "protocol": "https"},
+        {"format_id": "audio-192p", "vcodec": "none", "acodec": "aac",
+         "height": 192, "protocol": "https"},
+    ]}
+    postprocess_rumble_info(info, "https://rumble.com/v123abc-example.html")
+    ids = [f["format_id"] for f in info["formats"]]
+    assert "timeline-180p" not in ids
+    assert "hls-4624" in ids
+    assert "audio-192p" in ids
+    # HLS video format should have acodec fixed to 'none' (video-only)
+    hls = next(f for f in info["formats"] if f["format_id"] == "hls-4624")
+    assert hls["acodec"] == "none"
+    # Audio format should be unchanged
+    audio = next(f for f in info["formats"] if f["format_id"] == "audio-192p")
+    assert audio["acodec"] == "aac"
+
+
+def test_postprocess_rumble_info_leaves_non_rumble_untouched():
+    from downloader import postprocess_rumble_info
+    info = {"formats": [{"format_id": "x", "format_note": "Timeline", "acodec": None}]}
+    postprocess_rumble_info(info, "https://youtube.com/watch?v=x")
+    assert len(info["formats"]) == 1
+    assert info["formats"][0]["acodec"] is None
+
+
+def test_available_heights_excludes_timeline():
+    from downloader import available_heights
+    info = {"formats": [
+        {"height": 1080, "vcodec": None, "protocol": "m3u8_native"},
+        {"height": 180, "vcodec": None, "format_note": "Timeline"},
+    ]}
+    assert available_heights(info) == [1080]
 
 
 from pathlib import Path

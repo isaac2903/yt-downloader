@@ -5,6 +5,11 @@ from urllib.parse import urlsplit
 
 import yt_dlp
 
+try:
+    from yt_dlp.networking.impersonate import ImpersonateTarget
+except ImportError:
+    ImpersonateTarget = None
+
 SUPPORTED_HOSTS = frozenset(
     {
         "youtube.com",
@@ -21,6 +26,27 @@ SUPPORTED_HOSTS = frozenset(
         "www.rumble.com",
     }
 )
+
+_RUMBLE_HOSTS = frozenset({"rumble.com", "www.rumble.com"})
+_impersonate_target = False
+
+
+def impersonate_target_for(url: str):
+    """ImpersonateTarget for Rumble's Cloudflare front, or None when unavailable."""
+    if ImpersonateTarget is None:
+        return None
+    if (urlsplit(url).hostname or "").lower() not in _RUMBLE_HOSTS:
+        return None
+    global _impersonate_target
+    if _impersonate_target is False:
+        target = ImpersonateTarget.from_str("chrome-136")
+        try:
+            with yt_dlp.YoutubeDL({"quiet": True, "impersonate": target}):
+                pass
+        except yt_dlp.utils.YoutubeDLError:
+            target = None
+        _impersonate_target = target
+    return _impersonate_target
 
 
 def is_supported_url(url: str) -> bool:
@@ -46,8 +72,10 @@ def is_single_video_info(info: dict) -> bool:
         return False
     if info.get("is_live") or info.get("live_status") == "is_live":
         return False
+    # Rumble HLS/timeline formats leave vcodec unset (None) because the
+    # m3u8 doesn't declare codecs; only vcodec=="none" is explicitly audio.
     return any(
-        fmt.get("vcodec") not in (None, "none")
+        fmt.get("vcodec") != "none"
         for fmt in info.get("formats", [])
     )
 
@@ -57,9 +85,31 @@ def available_heights(info: dict) -> list[int]:
     heights = {
         f["height"]
         for f in info.get("formats", [])
-        if f.get("height") and f.get("vcodec") not in (None, "none")
+        if f.get("height") and f.get("vcodec") != "none"
+        and f.get("format_note") != "Timeline"
     }
     return sorted(heights, reverse=True)
+
+
+def postprocess_rumble_info(info: dict, url: str) -> None:
+    """Fix Rumble format metadata in-place for correct format selection.
+
+    Two issues:
+    1. The 'timeline' format is a storyboard slideshow (not a real video);
+       left in, bestvideo grabs it because it's the only acodec='none' format.
+    2. HLS video formats have acodec=None (the m3u8 doesn't declare codecs),
+       so yt-dlp's bestvideo+bestaudio can't pair them with the separate
+       audio stream — it thinks they already contain audio and skips the merge.
+    """
+    if (urlsplit(url).hostname or "").lower() not in _RUMBLE_HOSTS:
+        return
+    info["formats"] = [
+        f for f in info.get("formats", [])
+        if f.get("format_note") != "Timeline"
+    ]
+    for f in info["formats"]:
+        if f.get("vcodec") != "none" and f.get("acodec") is None:
+            f["acodec"] = "none"
 
 
 DOWNLOAD_DIR = Path.home() / "Downloads"
@@ -81,6 +131,7 @@ def _base_opts(outdir=DOWNLOAD_DIR, progress_hook=None) -> dict:
         "quiet": True,
         "no_warnings": True,
         "progress_hooks": [progress_hook or _progress_hook],
+        "concurrent_fragment_downloads": 4,
     }
 
 
@@ -126,8 +177,13 @@ def _prompt_choice(prompt: str, choices: list[str]) -> int:
 def download(url: str) -> None:
     """Fetch info for url, ask video/audio + resolution, download."""
     print("  Fetching video info...")
-    with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": False}) as ydl:
+    probe_opts = {"quiet": True, "no_warnings": True, "noplaylist": False}
+    imp = impersonate_target_for(url)
+    if imp is not None:
+        probe_opts["impersonate"] = imp
+    with yt_dlp.YoutubeDL(probe_opts) as ydl:
         info = ydl.extract_info(url, download=False)
+    postprocess_rumble_info(info, url)
     if not is_single_video_info(info):
         print("  Only public, finished single-video links are supported.")
         return
@@ -145,10 +201,21 @@ def download(url: str) -> None:
     else:
         opts = build_audio_opts()
         suffix = ".mp3"
+    if imp is not None:
+        opts["impersonate"] = imp
 
+    # Two-step: re-extract fresh info (URLs may have expired since the
+    # probe), fix Rumble format metadata, then download with the fixed info
+    # so the format selector sees the corrected acodec values.
+    fresh_opts = {"quiet": True, "no_warnings": True, "noplaylist": False}
+    if imp is not None:
+        fresh_opts["impersonate"] = imp
+    with yt_dlp.YoutubeDL(fresh_opts) as ydl:
+        fresh = ydl.extract_info(url, download=False)
+    postprocess_rumble_info(fresh, url)
     with yt_dlp.YoutubeDL(opts) as ydl:
-        ydl.download([url])
-        path = Path(ydl.prepare_filename(info)).with_suffix(suffix)
+        ydl.process_video_result(fresh, download=True)
+        path = Path(ydl.prepare_filename(fresh)).with_suffix(suffix)
     print(f"  Saved to {path}")
 
 

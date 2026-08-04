@@ -25,8 +25,10 @@ from downloader import (
     available_heights,
     build_audio_opts,
     build_video_opts,
+    impersonate_target_for,
     is_single_video_info,
     is_supported_url,
+    postprocess_rumble_info,
 )
 
 load_dotenv(Path(__file__).resolve().parent / ".env")
@@ -160,8 +162,9 @@ def estimate_download_size(info: dict, mode: str, height: int = None):
         return audio_size or None
 
     videos = [f for f in formats
-              if f.get("vcodec") not in (None, "none")
-              and f.get("height") and f["height"] <= (height or 0)]
+              if f.get("vcodec") != "none"
+              and f.get("height") and f["height"] <= (height or 0)
+              and f.get("format_note") != "Timeline"]
     avc = [f for f in videos if str(f.get("vcodec", "")).startswith("avc1")]
     pool = avc or videos
     if not pool:
@@ -342,10 +345,23 @@ def process_job(job: dict) -> None:
     if job["mode"] == "audio":
         opts, suffix = build_audio_opts(outdir=outdir, progress_hook=hook), ".mp3"
     else:
-        opts, suffix = build_video_opts(job["height"], outdir=outdir, progress_hook=hook), ".mp4"
+        opts, suffix = build_video_opts(
+            job["height"], outdir=outdir, progress_hook=hook), ".mp4"
+    imp = impersonate_target_for(job["url"])
+    if imp is not None:
+        opts["impersonate"] = imp
     def download():
+        # Two-step: extract fresh info, fix Rumble format metadata, then
+        # download with the corrected info so the format selector pairs
+        # HLS video with the separate audio stream correctly.
+        probe_opts = {"quiet": True, "no_warnings": True, "noplaylist": False}
+        if imp is not None:
+            probe_opts["impersonate"] = imp
+        with yt_dlp.YoutubeDL(probe_opts) as ydl:
+            info = ydl.extract_info(job["url"], download=False)
+        postprocess_rumble_info(info, job["url"])
         with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(job["url"], download=True)
+            ydl.process_video_result(info, download=True)
             return Path(ydl.prepare_filename(info)).with_suffix(suffix), info
 
     def announce_retry():
@@ -397,13 +413,18 @@ def handle_message(msg: dict) -> None:
            text="Send me a public YouTube, X/Twitter, or Rumble video link 🎬")
         return
     tg("sendChatAction", chat_id=chat_id, action="typing")
+    probe_opts = {"quiet": True, "no_warnings": True, "noplaylist": False}
+    imp = impersonate_target_for(text)
+    if imp is not None:
+        probe_opts["impersonate"] = imp
     try:
-        with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "noplaylist": False}) as ydl:
+        with yt_dlp.YoutubeDL(probe_opts) as ydl:
             info = ydl.extract_info(text, download=False)
     except yt_dlp.utils.YoutubeDLError as e:
         reason = str(e).splitlines()[0][:200]
         tg("sendMessage", chat_id=chat_id, text=f"❌ Couldn't fetch that video: {reason}")
         return
+    postprocess_rumble_info(info, text)
     if not is_single_video_info(info):
         tg(
             "sendMessage",
