@@ -204,16 +204,13 @@ def download(url: str) -> None:
     if imp is not None:
         opts["impersonate"] = imp
 
-    # Two-step: re-extract fresh info (URLs may have expired since the
-    # probe), fix Rumble format metadata, then download with the fixed info
-    # so the format selector sees the corrected acodec values.
-    fresh_opts = {"quiet": True, "no_warnings": True, "noplaylist": False}
-    if imp is not None:
-        fresh_opts["impersonate"] = imp
-    with yt_dlp.YoutubeDL(fresh_opts) as ydl:
-        fresh = ydl.extract_info(url, download=False)
-    postprocess_rumble_info(fresh, url)
+    # Extract and download in the SAME YoutubeDL instance so the download
+    # shares the extraction session's cookiejar / request context.
+    # postprocess_rumble_info runs between the two to fix Rumble format
+    # metadata (timeline removal + acodec=None fix) before format selection.
     with yt_dlp.YoutubeDL(opts) as ydl:
+        fresh = ydl.extract_info(url, download=False)
+        postprocess_rumble_info(fresh, url)
         ydl.process_video_result(fresh, download=True)
         path = Path(ydl.prepare_filename(fresh)).with_suffix(suffix)
     print(f"  Saved to {path}")

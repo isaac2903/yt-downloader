@@ -351,23 +351,22 @@ def process_job(job: dict) -> None:
     if imp is not None:
         opts["impersonate"] = imp
     def download():
-        # Two-step: extract fresh info, fix Rumble format metadata, then
-        # download with the corrected info so the format selector pairs
-        # HLS video with the separate audio stream correctly.
-        probe_opts = {"quiet": True, "no_warnings": True, "noplaylist": False}
-        if imp is not None:
-            probe_opts["impersonate"] = imp
-        with yt_dlp.YoutubeDL(probe_opts) as ydl:
-            info = ydl.extract_info(job["url"], download=False)
-        postprocess_rumble_info(info, job["url"])
+        # Extract and download in the SAME YoutubeDL instance so the
+        # download shares the extraction session's cookiejar / request
+        # context (YouTube/X audio URLs are session-signed and 403/404
+        # when downloaded by a different instance).  postprocess_rumble_info
+        # runs between extraction and download to fix Rumble's format
+        # metadata (timeline removal + acodec=None fix).
         with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(job["url"], download=False)
+            postprocess_rumble_info(info, job["url"])
             ydl.process_video_result(info, download=True)
             return Path(ydl.prepare_filename(info)).with_suffix(suffix), info
 
     def announce_retry():
         log.warning("download failed, retrying once: %s", job["url"])
         tg("editMessageText", chat_id=chat_id, message_id=message_id,
-           text="⚠️ YouTube hiccup — retrying…")
+           text="⚠️ Download hiccup — retrying…")
 
     try:
         path, info = with_one_retry(download, announce_retry)
